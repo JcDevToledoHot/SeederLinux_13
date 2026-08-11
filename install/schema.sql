@@ -181,7 +181,7 @@ INSERT INTO variable_definitions (name, placeholder, description, type, category
 ('SSH_PORT', '{{SSH_PORT}}', 'Porta SSH (padrao: 22)', 'port', 'acesso_remoto', FALSE, '22', 121),
 ('SSH_GROUPS', '{{SSH_GROUPS}}', 'Grupos do dominio com acesso SSH (um por linha)', 'array', 'seguranca', FALSE, 'linux-admins', 124),
 ('VNC_ENABLED', '{{VNC_ENABLED}}', 'Habilitar servidor VNC (x11vnc)?', 'boolean', 'acesso_remoto', FALSE, 'false', 122),
-('VNC_PASSWORD', '{{VNC_PASSWORD}}', 'Senha do servidor VNC (em branco = aleatoria)', 'password', 'acesso_remoto', FALSE, '', 123),
+('VNC_PASSWORD_B64', '{{VNC_PASSWORD_B64}}', 'Senha do servidor VNC (em branco = aleatoria)', 'password', 'acesso_remoto', FALSE, '', 123),
 
 -- Certificates
 ('CERTIFICATE_BUNDLE', '{{CERTIFICATE_BUNDLE}}', 'URL para download do pacote de certificados CA institucionais (formato .tar.gz). Deixe vazio se nao houver certificados personalizados.', 'url', 'oculto', FALSE, '', 130),
@@ -259,12 +259,12 @@ CREATE INDEX IF NOT EXISTS idx_scripts_core ON scripts(is_core, execution_order)
 
 -- Constraint UNIQUE em scripts.filename para suportar ON CONFLICT (filename)
 -- (idempotente: so cria se ainda nao existir)
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scripts_filename_key') THEN
         ALTER TABLE scripts ADD CONSTRAINT scripts_filename_key UNIQUE (filename);
     END IF;
-END $;
+END $$;
 
 -- ============================================================================
 -- Table 6b: script_versions (script versioning infrastructure)
@@ -289,13 +289,13 @@ CREATE INDEX IF NOT EXISTS idx_script_versions_type ON script_versions(version_t
 CREATE INDEX IF NOT EXISTS idx_script_versions_org ON script_versions(organization_id);
 
 -- FK: scripts.current_version_id -> script_versions.id (deferred; script_versions is created after scripts)
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'scripts_current_version_id_fkey' AND table_name = 'scripts') THEN
         ALTER TABLE scripts ADD CONSTRAINT scripts_current_version_id_fkey
             FOREIGN KEY (current_version_id) REFERENCES script_versions(id);
     END IF;
-END $;
+END $$;
 
 -- ============================================================================
 -- Table 6c: om_script_versions (organization-specific script version overrides)

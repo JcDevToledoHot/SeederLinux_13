@@ -11,7 +11,16 @@ BRANCH="main"
 DB_USER="seeder"
 DB_NAME="seederlinux"
 LOG_FILE="/var/log/seeder-sync.log"
-SEEDER_SERVER="https://seederlinux.om.local"
+SEEDER_SERVER="${SEEDER_SERVER:-https://seederlinux.example}"
+if [ "$#" -gt 0 ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      --server=*) SEEDER_SERVER="${arg#--server=}" ;;
+      --server)   shift_state=1 ;;
+      *) [ "${shift_state:-0}" = "1" ] && SEEDER_SERVER="$arg" && shift_state=0 ;;
+    esac
+  done
+fi
 
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"

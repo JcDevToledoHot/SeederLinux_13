@@ -28,12 +28,12 @@ GRUPO_ADMIN_AD="{{GRUPO_ADMIN_AD}}"
 
 if [ -z "$DISPLAY_MANAGER" ] || [ "$DISPLAY_MANAGER" = "" ]; then
     echo ">>> DISPLAY_MANAGER nao configurado. Nenhum DM sera instalado."
-    exit 0
+    return 0
 fi
 
 if [ "$DISPLAY_MANAGER" != "gdm3" ]; then
     echo ">>> DISPLAY_MANAGER e $DISPLAY_MANAGER (nao e gdm3). Pulando."
-    exit 0
+    return 0
 fi
 
 echo ">>> Display Manager: $DISPLAY_MANAGER"
@@ -89,7 +89,7 @@ if [ -x /usr/local/bin/seederlinux-logon ]; then
     /usr/local/bin/seederlinux-logon "$@"
 fi
 
-exit 0
+exit "${EXIT_STATUS:-0}"
 PRESESSION
 chmod +x "$PRESESSION_FILE"
 
@@ -105,7 +105,7 @@ if [ -x /usr/local/bin/seederlinux-logoff ]; then
     /usr/local/bin/seederlinux-logoff "$@"
 fi
 
-exit 0
+exit "${EXIT_STATUS:-0}"
 POSTSESSION
 chmod +x "$POSTSESSION_FILE"
 

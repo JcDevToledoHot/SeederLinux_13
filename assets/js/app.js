@@ -183,16 +183,6 @@ const Utils = {
         };
     },
 
-    slugify(text) {
-        return text
-            .toString()
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, '-')
-            .replace(/[^\w\-]+/g, '')
-            .replace(/\-\-+/g, '-');
-    },
-
     escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');

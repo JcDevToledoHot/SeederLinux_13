@@ -1,1 +1,0 @@
--- Insert core_repositories.sh placeholder -- content loaded from file

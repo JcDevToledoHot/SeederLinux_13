@@ -14,7 +14,7 @@ function jsonResponse($data, $code = 200) {
 }
 
 function sanitizeInput($str) {
-    return htmlspecialchars(trim($str ?? ''), ENT_QUOTES, 'UTF-8');
+    return trim($str ?? '');
 }
 
 function requireAuth() {

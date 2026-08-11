@@ -32,13 +32,13 @@ if [ -z "$DISPLAY_MANAGER" ] || [ "$DISPLAY_MANAGER" = "" ]; then
         echo ">>> DISPLAY_MANAGER vazio, mas LightDM ja esta instalado. Configurando greeter."
     else
         echo ">>> DISPLAY_MANAGER nao configurado. Nenhum DM sera instalado."
-        exit 0
+        return 0
     fi
 fi
 
 if [ "$DISPLAY_MANAGER" != "lightdm" ] && [ "$DISPLAY_MANAGER" != "" ]; then
     echo ">>> DISPLAY_MANAGER e $DISPLAY_MANAGER (nao e lightdm). Pulando."
-    exit 0
+    return 0
 fi
 
 echo ">>> Display Manager: $DISPLAY_MANAGER"

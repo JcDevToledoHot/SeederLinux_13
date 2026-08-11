@@ -263,7 +263,11 @@ function handleLogin($input) {
         [$username]
     );
 
-    if (!$user || !$user['is_active'] || !password_verify($password, $user['password_hash'])) {
+    if (!$user || !$user['is_active']) {
+        password_verify($password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
+        jsonError('Credenciais invalidas', 401);
+    }
+    if (!password_verify($password, $user['password_hash'])) {
         jsonError('Credenciais invalidas', 401);
     }
 
@@ -297,7 +301,11 @@ function handleLogin($input) {
 }
 
 function handleLogout() {
-    log_audit('LOGOUT', 'users', $_SESSION['user_id'] ?? null);
+    $userId = $_SESSION['user_id'] ?? null;
+    log_audit('LOGOUT', 'users', $userId);
+    if ($userId) {
+        Database::execute("DELETE FROM user_tokens WHERE user_id = ?", [$userId]);
+    }
     session_destroy();
     jsonSuccess(null, 'Logout realizado');
 }
@@ -855,7 +863,7 @@ function handleGenerateBundle($input) {
     $bundle .= "fi\n\n";
 
     $skipExportTypes = ['password'];
-    $skipExportNames = ['ADMIN_USERNAME', 'INSTALL_DESKTOP'];
+    $skipExportNames = ['INSTALL_DESKTOP'];
     $imageVars = ['WALLPAPER_URL', 'LOGO_URL', 'WALLPAPER_LOGIN_URL', 'GREETER_URL'];
     $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
     // Always use SEEDER_SERVER FQDN for URLs in the bundle
@@ -892,9 +900,7 @@ function handleGenerateBundle($input) {
          WHERE ov.organization_id = ? AND vd.name = 'ADMIN_PASSWORD_B64'",
         [$orgId]
     );
-    $adminPwdEncoded = ($adminPwdRow && !empty($adminPwdRow['value']))
-        ? base64_encode($adminPwdRow['value'])
-        : '';
+    $adminPwdEncoded = $adminPwdRow['value'] ?? '';
 
     // Fetch VNC_PASSWORD_B64 for base64 encoding in scripts (same pattern as ADMIN_PASSWORD_B64)
     $vncPwdRow = Database::fetchOne(
@@ -903,9 +909,7 @@ function handleGenerateBundle($input) {
          WHERE ov.organization_id = ? AND vd.name = 'VNC_PASSWORD_B64'",
         [$orgId]
     );
-    $vncPwdEncoded = ($vncPwdRow && !empty($vncPwdRow['value']))
-        ? base64_encode($vncPwdRow['value'])
-        : '';
+    $vncPwdEncoded = $vncPwdRow['value'] ?? '';
 
     foreach ($scripts as $s) {
         $rawContent = getScriptContent((int)$s['id'], $orgId);
@@ -922,10 +926,20 @@ function handleGenerateBundle($input) {
     $bundle .= "# === FIM DO BUNDLE ===\n";
     $bundle .= "echo 'Bundle executado com sucesso!'\n";
 
-    // Logar placeholders nao resolvidos (apenas aviso, nao bloqueia a geracao)
-    if (preg_match_all('/\{\{[A-Z_]+\}\}/', $bundle, $matches)) {
-        $unresolved = array_unique($matches[0]);
-        log_event('Placeholders nao resolvidos no bundle (nao bloqueia): ' . implode(', ', $unresolved), 'WARN');
+    $validPlaceholders = array_column(
+        Database::fetchAll("SELECT placeholder FROM variable_definitions"),
+        'placeholder'
+    );
+    if (preg_match_all('/\{\{([A-Z_]+)\}\}/', $bundle, $matches)) {
+        $unresolved = [];
+        foreach (array_unique($matches[1]) as $placeholder) {
+            if (in_array($placeholder, $validPlaceholders, true)) {
+                $unresolved[] = '{{' . $placeholder . '}}';
+            }
+        }
+        if (!empty($unresolved)) {
+            jsonError('Placeholders nao resolvidos: ' . implode(', ', $unresolved), 400);
+        }
     }
 
     $filename = "bundle_{$org['acronym']}_" . date('Ymd_His') . ".sh";
@@ -959,6 +973,7 @@ function handleGenerateBundle($input) {
 }
 
 function handleDownloadBundle($id) {
+    requireAuth();
     $bundle = Database::fetchOne("SELECT id, filename, content FROM deploy_bundles WHERE id = ?", [$id]);
     if (!$bundle) jsonError('Bundle nao encontrado', 404);
 

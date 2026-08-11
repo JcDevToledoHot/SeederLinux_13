@@ -302,7 +302,6 @@ async function resetScriptOrder() {
 }
 window.resetScriptOrder = resetScriptOrder;
 
-setupEventListeners();
     } catch (e) {
         console.error('Init error:', e);
         location.href = '/login.html';
@@ -1368,35 +1367,6 @@ window.addVariable = addVariable;
 
 
 
-async function handleImageUpload(type, varId, inputEl) {
-    const file = inputEl.files[0];
-    if (!file || !currentOrgId) return;
-
-    const fd = new FormData();
-    fd.append(type, file);
-    fd.append('organization_id', currentOrgId);
-
-    Toast.info('Enviando arquivo...');
-    const res = await API.postMultipart(`upload-${type}`, fd);
-    if (res.success) {
-        Toast.success('Arquivo enviado com sucesso');
-        const inp = document.querySelector(`input[data-var-id="${varId}"]`);
-        if (inp) inp.value = res.data.url;
-        const gallery = document.getElementById(`${type}-gallery`);
-        if (gallery) {
-            gallery.querySelectorAll('.gallery-thumb').forEach(t => t.classList.remove('selected'));
-            const item = document.createElement('div');
-            item.className = 'gallery-thumb selected';
-            item.innerHTML = `<img src="${res.data.thumbnail || res.data.url}" alt="${res.data.filename}">`;
-            item.onclick = () => selectGalleryImage(res.data.url, varId, item);
-            gallery.insertBefore(item, gallery.firstChild);
-        }
-    } else {
-        Toast.error(res.error || 'Erro no upload');
-    }
-}
-window.handleImageUpload = handleImageUpload;
-
 // ============ TABS ============
 
 function switchTab(tabName) {
@@ -2056,10 +2026,3 @@ window.loadGalleryImages = loadGalleryImages;
 window.selectGalleryImage = selectGalleryImage;
 window.deleteGalleryImage = deleteGalleryImage;
 
-function getVariableValue(name) {
-    if (!allVariables) return '';
-    const v = allVariables.find(x => x.name === name);
-    return v ? (v.current_value || v.default_value || '') : '';
-}
-
-setupEventListeners();
