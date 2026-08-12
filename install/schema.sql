@@ -330,6 +330,8 @@ CREATE TABLE IF NOT EXISTS deploy_bundles (
 
 CREATE INDEX IF NOT EXISTS idx_deploy_bundles_org ON deploy_bundles(organization_id);
 CREATE INDEX IF NOT EXISTS idx_deploy_bundles_date ON deploy_bundles(generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bundles_org_active_date 
+ON deploy_bundles(organization_id, is_active, generated_at DESC);
 
 -- ============================================================================
 -- Table 8: stations

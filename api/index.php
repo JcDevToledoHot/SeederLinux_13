@@ -258,46 +258,81 @@ function handleLogin($input) {
         jsonError('Username e senha obrigatorios');
     }
 
-    $user = Database::fetchOne(
-        "SELECT id, username, password_hash, full_name, email, role, organization_id, is_active FROM users WHERE username = ?",
-        [$username]
-    );
+    try {
+        // 1. Rate limiting: máximo 5 tentativas falhadas em 15 minutos por IP
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $failedAttempts = Database::fetchOne(
+            "SELECT COUNT(*) as count FROM audit_events WHERE action = 'LOGIN_FAILED' AND ip_address = ? AND created_at > NOW() - INTERVAL '15 minutes'",
+            [$ip]
+        );
+        if ($failedAttempts && $failedAttempts['count'] >= 5) {
+            http_response_code(429);
+            echo json_encode(['success' => false, 'error' => 'Muitas tentativas de login. Tente novamente em 15 minutos.']);
+            return;
+        }
 
-    if (!$user || !$user['is_active']) {
-        password_verify($password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
-        jsonError('Credenciais invalidas', 401);
+        $user = Database::fetchOne(
+            "SELECT id, username, password_hash, full_name, email, role, organization_id, is_active FROM users WHERE username = ?",
+            [$username]
+        );
+
+        // 2. Timing attack prevention: sempre executar password_verify
+        $passwordValid = false;
+        if ($user && $user['is_active']) {
+            $passwordValid = password_verify($password, $user['password_hash']);
+        } else {
+            // Hash dummy para manter tempo constante mesmo se usuário não existe
+            password_verify($password, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
+        }
+
+        // Rejeitar se usuário inativo ou senha inválida
+        if (!$user || !$user['is_active'] || !$passwordValid) {
+            // Registrar tentativa falhada para rate limiting
+            Database::execute(
+                "INSERT INTO audit_events (organization_id, user_id, entity, action, details, ip_address, created_at)
+                 VALUES (NULL, NULL, 'users', 'LOGIN_FAILED', ?, ?, NOW())",
+                [json_encode(['username' => $username]), $ip]
+            );
+            jsonError('Credenciais invalidas', 401);
+        }
+
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['role'] = $user['role'];
+        $_SESSION['organization_id'] = $user['organization_id'];
+
+        $token = bin2hex(random_bytes(32));
+        $tokenHash = password_hash($token, PASSWORD_DEFAULT);
+        Database::execute(
+            "INSERT INTO user_tokens (user_id, token_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL '24 hours')",
+            [$user['id'], $tokenHash]
+        );
+
+        $org = $user['organization_id'] ? Database::fetchOne("SELECT id, acronym, name, domain FROM organizations WHERE id = ?", [$user['organization_id']]) : null;
+
+        log_audit('LOGIN', 'users', $user['id'], ['username' => $username]);
+
+        jsonSuccess([
+            'id' => $user['id'],
+            'username' => $user['username'],
+            'full_name' => $user['full_name'],
+            'email' => $user['email'],
+            'role' => $user['role'],
+            'token' => $token,
+            'organization_id' => $user['organization_id'],
+            'org_acronym' => $org['acronym'] ?? null,
+            'org_name' => $org['name'] ?? null
+        ], 'Login realizado com sucesso');
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro no banco de dados: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
     }
-    if (!password_verify($password, $user['password_hash'])) {
-        jsonError('Credenciais invalidas', 401);
-    }
-
-    $_SESSION['user_id'] = $user['id'];
-    $_SESSION['username'] = $user['username'];
-    $_SESSION['role'] = $user['role'];
-    $_SESSION['organization_id'] = $user['organization_id'];
-
-    $token = bin2hex(random_bytes(32));
-    $tokenHash = password_hash($token, PASSWORD_DEFAULT);
-    Database::execute(
-        "INSERT INTO user_tokens (user_id, token_hash, expires_at) VALUES (?, ?, NOW() + INTERVAL '24 hours')",
-        [$user['id'], $tokenHash]
-    );
-
-    $org = $user['organization_id'] ? Database::fetchOne("SELECT id, acronym, name, domain FROM organizations WHERE id = ?", [$user['organization_id']]) : null;
-
-    log_audit('LOGIN', 'users', $user['id'], ['username' => $username]);
-
-    jsonSuccess([
-        'id' => $user['id'],
-        'username' => $user['username'],
-        'full_name' => $user['full_name'],
-        'email' => $user['email'],
-        'role' => $user['role'],
-        'token' => $token,
-        'organization_id' => $user['organization_id'],
-        'org_acronym' => $org['acronym'] ?? null,
-        'org_name' => $org['name'] ?? null
-    ], 'Login realizado com sucesso');
 }
 
 function handleLogout() {
@@ -488,13 +523,13 @@ function handleCreateOrganization($input) {
         jsonError('DC_IP e DNS Primario obrigatorios quando dominio informado');
     }
 
-    if (Database::fetchOne("SELECT id FROM organizations WHERE acronym = ? AND is_active = TRUE", [$acronym])) {
-        jsonError('Sigla ja cadastrada');
-    }
-
-    Database::beginTransaction();
-
     try {
+        if (Database::fetchOne("SELECT id FROM organizations WHERE acronym = ? AND is_active = TRUE", [$acronym])) {
+            jsonError('Sigla ja cadastrada');
+        }
+
+        Database::beginTransaction();
+
         Database::execute(
             "INSERT INTO organizations (name, acronym, domain, description) VALUES (?, ?, ?, ?)",
             [$name, $acronym, $domain, $description]
@@ -511,19 +546,35 @@ function handleCreateOrganization($input) {
         generateDefaultVariables($newOrgId, $name, $acronym, $domain, $dcIp, $dnsPrimario, $dnsSecundario, $proxyHttp, $proxyPorta);
 
         Database::commit();
+
+        log_audit('CREATE', 'organizations', $newOrgId, ['name' => $name, 'acronym' => $acronym]);
+        log_event("Organizacao criada: $acronym (id=$newOrgId)", 'INFO');
+
+        jsonSuccess(
+            Database::fetchOne("SELECT id, name, acronym, domain, description FROM organizations WHERE id = ?", [$newOrgId]),
+            'Organizacao criada com sucesso'
+        );
+    } catch (PDOException $e) {
+        Database::rollback();
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao criar organização: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
     } catch (Exception $e) {
         Database::rollback();
-        error_log('handleCreateOrganization error: ' . $e->getMessage());
-        jsonError('Erro ao criar organizacao: ' . $e->getMessage(), 500);
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao criar organização: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
     }
-
-    log_audit('CREATE', 'organizations', $newOrgId, ['name' => $name, 'acronym' => $acronym]);
-    log_event("Organizacao criada: $acronym (id=$newOrgId)", 'INFO');
-
-    jsonSuccess(
-        Database::fetchOne("SELECT id, name, acronym, domain, description FROM organizations WHERE id = ?", [$newOrgId]),
-        'Organizacao criada com sucesso'
-    );
 }
 
 function handleUpdateOrganization($id, $input) {
@@ -560,19 +611,37 @@ function handleDeleteOrganization($id) {
 
 // VARIABLES
 function handleGetVariables($orgId) {
-    if (!$orgId) $orgId = getUserOrgId();
+    $user = getCurrentUser();
+    // operador_om só pode acessar sua própria OM
+    if (!$orgId) {
+        $orgId = getUserOrgId();
+    }
+    if ($user && $user['role'] === 'operador_om' && $orgId != $user['organization_id']) {
+        jsonError('Acesso negado a esta organizacao', 403);
+    }
     if (!$orgId) jsonError('Organization ID required', 400);
 
-    $vars = Database::fetchAll(
-        "SELECT vd.id, vd.name, vd.description, vd.category, vd.type, vd.is_required, vd.default_value,
-                ov.value as current_value
-         FROM variable_definitions vd
-         LEFT JOIN organization_variables ov ON ov.variable_id = vd.id AND ov.organization_id = ?
-         ORDER BY vd.category, vd.name",
-        [$orgId]
-    );
+    try {
+        $vars = Database::fetchAll(
+            "SELECT vd.id, vd.name, vd.description, vd.category, vd.type, vd.is_required, vd.default_value,
+                    ov.value as current_value
+             FROM variable_definitions vd
+             LEFT JOIN organization_variables ov ON ov.variable_id = vd.id AND ov.organization_id = ?
+             ORDER BY vd.category, vd.name",
+            [$orgId]
+        );
 
-    jsonSuccess(['variables' => $vars, 'organization_id' => $orgId]);
+        jsonSuccess(['variables' => $vars, 'organization_id' => $orgId]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar variáveis: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleUpdateVariables($input) {
@@ -580,18 +649,37 @@ function handleUpdateVariables($input) {
     $variables = $input['variables'] ?? [];
 
     if (!$orgId) jsonError('Organization ID required');
-
-    foreach ($variables as $varId => $value) {
-        Database::execute(
-            "UPDATE organization_variables SET value = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE organization_id = ? AND variable_id = ?",
-            [$value, $orgId, $varId]
-        );
+    
+    // Verificar escopo: operador_om não pode acessar dados de outra OM
+    $user = getCurrentUser();
+    if ($user && $user['role'] === 'operador_om' && $orgId != $user['organization_id']) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Acesso negado a esta organizacao']);
+        return;
     }
 
-    log_audit('UPDATE', 'variables', null, ['organization_id' => $orgId, 'count' => count($variables)]);
-    bumpOrgSerial($orgId);
-    jsonSuccess(null, 'Variaveis salvas com sucesso');
+    try {
+        foreach ($variables as $varId => $value) {
+            Database::execute(
+                "UPDATE organization_variables SET value = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE organization_id = ? AND variable_id = ?",
+                [$value, $orgId, $varId]
+            );
+        }
+
+        log_audit('UPDATE', 'variables', null, ['organization_id' => $orgId, 'count' => count($variables)]);
+        bumpOrgSerial($orgId);
+        jsonSuccess(null, 'Variaveis salvas com sucesso');
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao atualizar variáveis: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleAddVariable($input) {
@@ -635,24 +723,36 @@ function handleGetScripts($orgId) {
     $userOrgId = getUserOrgId();
     $isAdmin = isAdminGap();
 
-    if ($userOrgId !== null && !$isAdmin) {
-        $scripts = Database::fetchAll(
-            "SELECT id, name, filename, description, is_core, is_active, organization_id, version, execution_order, created_at
-             FROM scripts
-             WHERE is_active = TRUE AND (is_core = TRUE OR organization_id = ?)
-             ORDER BY execution_order ASC, name",
-            [$userOrgId]
-        );
-    } else {
-        $scripts = Database::fetchAll(
-            "SELECT id, name, filename, description, is_core, is_active, organization_id, version, execution_order, created_at
-             FROM scripts
-             WHERE is_active = TRUE
-             ORDER BY execution_order ASC, name"
-        );
-    }
+    try {
+        if ($userOrgId !== null && !$isAdmin) {
+            // operador_om só vê scripts core ou scripts customizados de sua OM
+            $scripts = Database::fetchAll(
+                "SELECT id, name, filename, description, is_core, is_active, organization_id, version, execution_order, created_at
+                 FROM scripts
+                 WHERE is_active = TRUE AND (is_core = TRUE OR organization_id = ?)
+                 ORDER BY execution_order ASC, name",
+                [$userOrgId]
+            );
+        } else {
+            $scripts = Database::fetchAll(
+                "SELECT id, name, filename, description, is_core, is_active, organization_id, version, execution_order, created_at
+                 FROM scripts
+                 WHERE is_active = TRUE
+                 ORDER BY execution_order ASC, name"
+            );
+        }
 
-    jsonSuccess($scripts);
+        jsonSuccess($scripts);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar scripts: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleGetScript($id) {
@@ -793,11 +893,17 @@ function handleGenerateBundle($input) {
 
     if (!$orgId) jsonError('Organization ID required');
 
-    $userOrgId = getUserOrgId();
-    if ($userOrgId !== null && $userOrgId !== $orgId) jsonError('Sem permissao', 403);
+    // Verificar escopo: operador_om não pode acessar dados de outra OM
+    $user = getCurrentUser();
+    if ($user && $user['role'] === 'operador_om' && $orgId != $user['organization_id']) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Acesso negado']);
+        return;
+    }
 
-    $org = Database::fetchOne("SELECT id, acronym, domain, serial_config FROM organizations WHERE id = ?", [$orgId]);
-    if (!$org) jsonError('Organizacao nao encontrada', 404);
+    try {
+        $org = Database::fetchOne("SELECT id, acronym, domain, serial_config FROM organizations WHERE id = ?", [$orgId]);
+        if (!$org) jsonError('Organizacao nao encontrada', 404);
 
     $vars = Database::fetchAll(
         "SELECT vd.name, vd.type, COALESCE(ov.value, vd.default_value, '') AS value
@@ -961,15 +1067,25 @@ function handleGenerateBundle($input) {
 
     bumpOrgSerial($orgId);
 
-    log_audit('GENERATE', 'bundles', $bundleId, ['organization' => $org['acronym'], 'scripts' => count($scripts)]);
-    log_event("Bundle gerado: {$org['acronym']} (id=$bundleId, scripts=" . count($scripts) . ")", 'INFO');
+        log_audit('GENERATE', 'bundles', $bundleId, ['organization' => $org['acronym'], 'scripts' => count($scripts)]);
+        log_event("Bundle gerado: {$org['acronym']} (id=$bundleId, scripts=" . count($scripts) . ")", 'INFO');
 
-    jsonSuccess([
-        'bundle_id' => $bundleId,
-        'filename' => $filename,
-        'download_url' => "/api/?action=bundle-by-id&id={$bundleId}",
-        'scripts_count' => count($scripts)
-    ], 'Bundle gerado com sucesso');
+        jsonSuccess([
+            'bundle_id' => $bundleId,
+            'filename' => $filename,
+            'download_url' => "/api/?action=bundle-by-id&id={$bundleId}",
+            'scripts_count' => count($scripts)
+        ], 'Bundle gerado com sucesso');
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao gerar bundle: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleDownloadBundle($id) {
@@ -1103,28 +1219,63 @@ function handleGetStations($orgId) {
         $params[] = $orgId;
     }
 
-    $stations = Database::fetchAll(
-        "SELECT s.id, s.hostname, s.ip_address, s.mac_address, s.os_name, s.os_version,
-                s.last_checkin, s.configuration_serial, s.organization_id, o.acronym as org_acronym,
-                o.serial_config,
-                CASE
-                    WHEN s.last_checkin >= ? THEN 'online'
-                    WHEN s.last_checkin < ? AND s.last_checkin IS NOT NULL THEN 'delayed'
-                    WHEN s.last_checkin IS NULL THEN 'never'
-                    ELSE 'unknown'
-                END as connection_status,
-                CASE
-                    WHEN s.configuration_serial >= o.serial_config THEN 'updated'
-                    ELSE 'outdated'
-                END as config_status
-         FROM stations s
-         JOIN organizations o ON o.id = s.organization_id
-         WHERE {$where}
-         ORDER BY s.last_checkin DESC NULLS LAST",
-        array_merge([date('Y-m-d H:i:s', strtotime('-2 hours')), date('Y-m-d H:i:s', strtotime('-2 hours'))], $params)
-    );
+    try {
+        // Paginação
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+        $offset = ($page - 1) * $limit;
 
-    jsonSuccess($stations);
+        // Contar total de estações
+        $countResult = Database::fetchOne(
+            "SELECT COUNT(*) as total FROM stations s WHERE {$where}",
+            $params
+        );
+        $total = $countResult['total'] ?? 0;
+
+        // Adicionar parâmetros de timestamp para status
+        $twoHoursAgo = date('Y-m-d H:i:s', strtotime('-2 hours'));
+        $statusParams = [$twoHoursAgo, $twoHoursAgo];
+
+        $stations = Database::fetchAll(
+            "SELECT s.id, s.hostname, s.ip_address, s.mac_address, s.os_name, s.os_version,
+                    s.last_checkin, s.configuration_serial, s.organization_id, o.acronym as org_acronym,
+                    o.serial_config,
+                    CASE
+                        WHEN s.last_checkin >= ? THEN 'online'
+                        WHEN s.last_checkin < ? AND s.last_checkin IS NOT NULL THEN 'delayed'
+                        WHEN s.last_checkin IS NULL THEN 'never'
+                        ELSE 'unknown'
+                    END as connection_status,
+                    CASE
+                        WHEN s.configuration_serial >= o.serial_config THEN 'updated'
+                        ELSE 'outdated'
+                    END as config_status
+             FROM stations s
+             JOIN organizations o ON o.id = s.organization_id
+             WHERE {$where}
+             ORDER BY s.last_checkin DESC NULLS LAST
+             LIMIT ? OFFSET ?",
+            array_merge($statusParams, $params, [$limit, $offset])
+        );
+
+        $metadata = [
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => (int)ceil($total / $limit)
+        ];
+
+        jsonSuccess(['stations' => $stations, 'pagination' => $metadata]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar estações: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleStationCheckin($input) {
@@ -1141,122 +1292,171 @@ function handleStationCheckin($input) {
         jsonError('Hostname obrigatorio');
     }
 
-    // Look up existing station: by token first, then by hostname+mac
-    $existing = null;
-    if (!empty($stationToken)) {
-        $existing = Database::fetchOne(
-            "SELECT id, organization_id FROM stations WHERE token = ?",
-            [$stationToken]
-        );
-    }
-    if (!$existing) {
-        $existing = Database::fetchOne(
-            "SELECT id, organization_id FROM stations WHERE hostname = ?" .
-            (!empty($macAddress) ? " AND (mac_address = ? OR mac_address IS NULL OR mac_address = '')" : ""),
-            !empty($macAddress) ? [$hostname, $macAddress] : [$hostname]
-        );
-    }
-
-    $isNew = false;
-    $newToken = null;
-
-    if ($existing) {
-        $organizationId = (int)$existing['organization_id'];
-        Database::execute(
-            "UPDATE stations SET ip_address = ?, mac_address = ?, os_name = ?, os_version = ?, configuration_serial = ?, last_checkin = CURRENT_TIMESTAMP WHERE id = ?",
-            [$ipAddress, $macAddress, $osName, $osVersion, $configSerial, $existing['id']]
-        );
-        $stationId = $existing['id'];
-    } else {
-        // New station — organization_acronym is required
-        if (empty($orgAcronym)) {
-            jsonError('Informe o acronimo da organizacao (--org) no primeiro check-in', 400);
+    try {
+        // Look up existing station: by token first, then by hostname+mac
+        $existing = null;
+        if (!empty($stationToken)) {
+            $existing = Database::fetchOne(
+                "SELECT id, organization_id FROM stations WHERE token = ?",
+                [$stationToken]
+            );
+        }
+        if (!$existing) {
+            $existing = Database::fetchOne(
+                "SELECT id, organization_id FROM stations WHERE hostname = ?" .
+                (!empty($macAddress) ? " AND (mac_address = ? OR mac_address IS NULL OR mac_address = '')" : ""),
+                !empty($macAddress) ? [$hostname, $macAddress] : [$hostname]
+            );
         }
 
-        $org = Database::fetchOne(
-            "SELECT id FROM organizations WHERE UPPER(acronym) = ? AND is_active = TRUE",
-            [$orgAcronym]
-        );
+        $isNew = false;
+        $newToken = null;
 
-        if (!$org) {
-            jsonError("Organizacao nao encontrada: $orgAcronym", 404);
+        if ($existing) {
+            $organizationId = (int)$existing['organization_id'];
+            Database::execute(
+                "UPDATE stations SET ip_address = ?, mac_address = ?, os_name = ?, os_version = ?, configuration_serial = ?, last_checkin = CURRENT_TIMESTAMP WHERE id = ?",
+                [$ipAddress, $macAddress, $osName, $osVersion, $configSerial, $existing['id']]
+            );
+            $stationId = $existing['id'];
+        } else {
+            // New station — organization_acronym is required
+            if (empty($orgAcronym)) {
+                jsonError('Informe o acronimo da organizacao (--org) no primeiro check-in', 400);
+            }
+
+            $org = Database::fetchOne(
+                "SELECT id FROM organizations WHERE UPPER(acronym) = ? AND is_active = TRUE",
+                [$orgAcronym]
+            );
+
+            if (!$org) {
+                jsonError("Organizacao nao encontrada: $orgAcronym", 404);
+            }
+
+            $organizationId = (int)$org['id'];
+            $newToken = bin2hex(random_bytes(32));
+            $isNew = true;
+
+            Database::execute(
+                "INSERT INTO stations (hostname, ip_address, mac_address, os_name, os_version, organization_id, configuration_serial, last_checkin, token)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
+                [$hostname, $ipAddress, $macAddress, $osName, $osVersion, $organizationId, $configSerial, $newToken]
+            );
+            $stationId = Database::lastInsertId();
         }
 
-        $organizationId = (int)$org['id'];
-        $newToken = bin2hex(random_bytes(32));
-        $isNew = true;
-
-        Database::execute(
-            "INSERT INTO stations (hostname, ip_address, mac_address, os_name, os_version, organization_id, configuration_serial, last_checkin, token)
-             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)",
-            [$hostname, $ipAddress, $macAddress, $osName, $osVersion, $organizationId, $configSerial, $newToken]
+        $orgRow = Database::fetchOne("SELECT serial_config FROM organizations WHERE id = ?", [$organizationId]);
+        $latestBundle = Database::fetchOne(
+            "SELECT id FROM deploy_bundles WHERE organization_id = ? ORDER BY generated_at DESC LIMIT 1",
+            [$organizationId]
         );
-        $stationId = Database::lastInsertId();
+        $orgSerial = (int)($orgRow['serial_config'] ?? 0);
+
+        $response = [
+            'status' => 'ok',
+            'station_id' => $stationId,
+            'update_available' => ($orgSerial > $configSerial),
+            'latest_bundle_id' => $latestBundle['id'] ?? null,
+            'current_serial' => $configSerial,
+            'latest_serial' => $orgSerial,
+        ];
+
+        if ($isNew && $newToken) {
+            $response['station_token'] = $newToken;
+        }
+
+        jsonSuccess($response, 'Check-in registrado');
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao processar check-in: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
     }
-
-    $orgRow = Database::fetchOne("SELECT serial_config FROM organizations WHERE id = ?", [$organizationId]);
-    $latestBundle = Database::fetchOne(
-        "SELECT id FROM deploy_bundles WHERE organization_id = ? ORDER BY generated_at DESC LIMIT 1",
-        [$organizationId]
-    );
-    $orgSerial = (int)($orgRow['serial_config'] ?? 0);
-
-    $response = [
-        'status' => 'ok',
-        'station_id' => $stationId,
-        'update_available' => ($orgSerial > $configSerial),
-        'latest_bundle_id' => $latestBundle['id'] ?? null,
-        'current_serial' => $configSerial,
-        'latest_serial' => $orgSerial,
-    ];
-
-    if ($isNew && $newToken) {
-        $response['station_token'] = $newToken;
-    }
-
-    jsonSuccess($response, 'Check-in registrado');
 }
 
 // AUDIT
 function handleGetAuditEvents() {
     if (!isAdminGap() && !isAuditor()) jsonError('Sem permissao', 403);
 
-    $limit = (int)($_GET['limit'] ?? 100);
-    $orgId = isset($_GET['org_id']) ? (int)$_GET['org_id'] : null;
-    $startDate = sanitizeInput($_GET['start_date'] ?? '');
-    $endDate = sanitizeInput($_GET['end_date'] ?? '');
+    try {
+        // Paginação
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+        $offset = ($page - 1) * $limit;
 
-    $where = "1=1";
-    $params = [];
+        // Filtros opcionais
+        $orgId = isset($_GET['org_id']) ? (int)$_GET['org_id'] : null;
+        $startDate = sanitizeInput($_GET['start_date'] ?? '');
+        $endDate = sanitizeInput($_GET['end_date'] ?? '');
+        $entityType = sanitizeInput($_GET['entity_type'] ?? '');
+        $action = sanitizeInput($_GET['action'] ?? '');
 
-    if ($orgId) {
-        $where .= " AND a.organization_id = ?";
-        $params[] = $orgId;
+        $where = "1=1";
+        $params = [];
+
+        if ($orgId) {
+            $where .= " AND a.organization_id = ?";
+            $params[] = $orgId;
+        }
+        if ($startDate) {
+            $where .= " AND a.created_at >= ?";
+            $params[] = $startDate . ' 00:00:00';
+        }
+        if ($endDate) {
+            $where .= " AND a.created_at <= ?";
+            $params[] = $endDate . ' 23:59:59';
+        }
+        if ($entityType) {
+            $where .= " AND a.entity = ?";
+            $params[] = $entityType;
+        }
+        if ($action) {
+            $where .= " AND a.action = ?";
+            $params[] = $action;
+        }
+
+        // Contar total de eventos
+        $countResult = Database::fetchOne(
+            "SELECT COUNT(*) as total FROM audit_events a WHERE {$where}",
+            $params
+        );
+        $total = $countResult['total'] ?? 0;
+
+        $events = Database::fetchAll(
+            "SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.ip_address, a.created_at,
+                    u.username, u.full_name, o.acronym as org_acronym
+             FROM audit_events a
+             LEFT JOIN users u ON u.id = a.user_id
+             LEFT JOIN organizations o ON o.id = a.organization_id
+             WHERE {$where}
+             ORDER BY a.created_at DESC
+             LIMIT ? OFFSET ?",
+            array_merge($params, [$limit, $offset])
+        );
+
+        $metadata = [
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => (int)ceil($total / $limit)
+        ];
+
+        jsonSuccess(['events' => $events, 'pagination' => $metadata]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar eventos de auditoria: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
     }
-    if ($startDate) {
-        $where .= " AND a.created_at >= ?";
-        $params[] = $startDate . ' 00:00:00';
-    }
-    if ($endDate) {
-        $where .= " AND a.created_at <= ?";
-        $params[] = $endDate . ' 23:59:59';
-    }
-
-    $params[] = $limit;
-
-    $events = Database::fetchAll(
-        "SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.ip_address, a.created_at,
-                u.username, u.full_name, o.acronym as org_acronym
-         FROM audit_events a
-         LEFT JOIN users u ON u.id = a.user_id
-         LEFT JOIN organizations o ON o.id = a.organization_id
-         WHERE {$where}
-         ORDER BY a.created_at DESC
-         LIMIT ?",
-        $params
-    );
-
-    jsonSuccess($events);
 }
 
 // UPLOADS
@@ -1607,14 +1807,46 @@ function handleListBundles($orgId) {
     }
     if (!$orgId) jsonError('org_id required');
 
-    $bundles = Database::fetchAll(
-        "SELECT id, filename, description, scripts_count, generated_at, is_active, octet_length(content) as content_size
-         FROM deploy_bundles
-         WHERE organization_id = ?
-         ORDER BY generated_at DESC",
-        [$orgId]
-    );
-    jsonSuccess($bundles);
+    try {
+        // Paginação
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+        $offset = ($page - 1) * $limit;
+
+        // Contar total de bundles
+        $countResult = Database::fetchOne(
+            "SELECT COUNT(*) as total FROM deploy_bundles WHERE organization_id = ?",
+            [$orgId]
+        );
+        $total = $countResult['total'] ?? 0;
+
+        $bundles = Database::fetchAll(
+            "SELECT id, filename, description, scripts_count, generated_at, is_active, octet_length(content) as content_size
+             FROM deploy_bundles
+             WHERE organization_id = ?
+             ORDER BY generated_at DESC
+             LIMIT ? OFFSET ?",
+            [$orgId, $limit, $offset]
+        );
+        
+        $metadata = [
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => (int)ceil($total / $limit)
+        ];
+        
+        jsonSuccess(['bundles' => $bundles, 'pagination' => $metadata]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao listar bundles: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleToggleBundleActive($input) {
@@ -1631,9 +1863,16 @@ function handleToggleBundleActive($input) {
         jsonError('Sem permissao', 403);
     }
 
-    $currentStatus = $bundle['is_active'] ?? false;
-    $newStatus = $currentStatus ? 'false' : 'true';
-    Database::execute("UPDATE deploy_bundles SET is_active = ? WHERE id = ?", [$newStatus, $bundleId]);
+    // Usar boolean real em vez de string 'true'/'false'
+    $currentStatus = (bool)($bundle['is_active'] ?? false);
+    $newStatus = !$currentStatus;
+    
+    // Executar update com boolean
+    $pdo = new PDO('pgsql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME, DB_USER, DB_PASS);
+    $stmt = $pdo->prepare("UPDATE deploy_bundles SET is_active = ? WHERE id = ?");
+    $stmt->bindValue(1, $newStatus, PDO::PARAM_BOOL);
+    $stmt->bindValue(2, $bundleId, PDO::PARAM_INT);
+    $stmt->execute();
 
     log_audit($newStatus ? 'ACTIVATE' : 'DEACTIVATE', 'bundles', $bundleId, []);
     jsonSuccess(null, $newStatus ? 'Bundle ativado' : 'Bundle desativado');
@@ -1762,37 +2001,48 @@ function handleSyncScript($input) {
 
     if (empty($filename) || empty($content)) jsonError('filename e content obrigatorios', 400);
 
-    $script = Database::fetchOne("SELECT id FROM scripts WHERE filename = ?", [$filename]);
-    if (!$script) jsonError('Script nao encontrado: ' . $filename, 404);
+    try {
+        $script = Database::fetchOne("SELECT id FROM scripts WHERE filename = ?", [$filename]);
+        if (!$script) jsonError('Script nao encontrado: ' . $filename, 404);
 
-    $scriptId = (int)$script['id'];
+        $scriptId = (int)$script['id'];
 
-    $maxVersion = Database::fetchOne(
-        "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM script_versions WHERE script_id = ?",
-        [$scriptId]
-    );
-    $nextVersion = (int)$maxVersion['max_v'] + 1;
+        $maxVersion = Database::fetchOne(
+            "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM script_versions WHERE script_id = ?",
+            [$scriptId]
+        );
+        $nextVersion = (int)$maxVersion['max_v'] + 1;
 
-    $versionName = $filename . ' - Factory v' . $nextVersion;
-    $userId = $_SESSION['user_id'] ?? null;
+        $versionName = $filename . ' - Factory v' . $nextVersion;
+        $userId = $_SESSION['user_id'] ?? null;
 
-    Database::execute(
-        "INSERT INTO script_versions (script_id, version_name, version_number, content, version_type, created_by)
-         VALUES (?, ?, ?, ?, 'factory', ?)",
-        [$scriptId, $versionName, $nextVersion, $content, $userId]
-    );
+        Database::execute(
+            "INSERT INTO script_versions (script_id, version_name, version_number, content, version_type, created_by)
+             VALUES (?, ?, ?, ?, 'factory', ?)",
+            [$scriptId, $versionName, $nextVersion, $content, $userId]
+        );
 
-    $newVersionId = (int)Database::lastInsertId();
+        $newVersionId = (int)Database::lastInsertId();
 
-    Database::execute(
-        "UPDATE scripts SET current_version_id = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-        [$newVersionId, $content, $scriptId]
-    );
+        Database::execute(
+            "UPDATE scripts SET current_version_id = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [$newVersionId, $content, $scriptId]
+        );
 
-    log_audit('SYNC', 'scripts', $scriptId, ['filename' => $filename, 'version' => $nextVersion]);
-    log_event("Script sincronizado: {$filename} v{$nextVersion} (id={$scriptId})", 'INFO');
+        log_audit('SYNC', 'scripts', $scriptId, ['filename' => $filename, 'version' => $nextVersion]);
+        log_event("Script sincronizado: {$filename} v{$nextVersion} (id={$scriptId})", 'INFO');
 
-    jsonSuccess(['version_id' => $newVersionId, 'version_number' => $nextVersion], 'Script sincronizado com sucesso');
+        jsonSuccess(['version_id' => $newVersionId, 'version_number' => $nextVersion], 'Script sincronizado com sucesso');
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao sincronizar script: ' . $e->getMessage(),
+            'file' => basename(__FILE__),
+            'line' => __LINE__ - 8
+        ]);
+        return;
+    }
 }
 
 function handleSetGapDefault($input) {
