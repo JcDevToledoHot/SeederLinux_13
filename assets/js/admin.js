@@ -172,6 +172,7 @@ const roleLabels = {
 
 document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+    setupEventListeners();
 
     try {
         const session = await API.get('session');
@@ -180,7 +181,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyRolePermissions();
         await loadDashboard();
         await loadOrganizations();
-        
 
 // ============ SCRIPT REORDER (DRAG AND DROP) ============
 
@@ -1265,7 +1265,7 @@ function filterByCategory(c) {
 window.filterByCategory = filterByCategory;
 
 async function saveVariables() {
-    if (!currentOrgId) return;
+    if (!currentOrgId) { Toast.error('Selecione uma organizacao antes de salvar'); return; }
 
     const updates = {};
     // Coleta apenas UM input por variable_id (prefere o "hidden" com dados serializados)
@@ -1318,12 +1318,16 @@ async function saveVariables() {
 
     Object.assign(updates, collected);
 
-    const res = await API.post('variables-update', { organization_id: currentOrgId, variables: updates });
-    if (res.success) {
-        Toast.success('Variaveis salvas com sucesso');
-        loadVariables(currentOrgId);
-    } else {
-        Toast.error(res.error || 'Erro ao salvar');
+    try {
+        const res = await API.post('variables-update', { organization_id: currentOrgId, variables: updates });
+        if (res.success) {
+            Toast.success('Variaveis salvas com sucesso');
+            loadVariables(currentOrgId);
+        } else {
+            Toast.error(res.error || 'Erro ao salvar');
+        }
+    } catch (error) {
+        Toast.error('Nao foi possivel salvar as variaveis');
     }
 }
 window.saveVariables = saveVariables;
@@ -1576,16 +1580,20 @@ async function generateBundle() {
 
     Toast.info('Gerando bundle...');
 
-    const res = await API.post('generate-bundle', {
-        organization_id: currentOrgId,
-        scripts: selected,
-        description: description.trim()
-    });
-    if (res.success) {
-        Toast.success('Bundle gerado com sucesso');
-        loadBundles(currentOrgId);
-    } else {
-        Toast.error(res.error || 'Erro ao gerar bundle');
+    try {
+        const res = await API.post('generate-bundle', {
+            organization_id: currentOrgId,
+            scripts: selected,
+            description: description.trim()
+        });
+        if (res.success) {
+            Toast.success('Bundle gerado com sucesso');
+            loadBundles(currentOrgId);
+        } else {
+            Toast.error(res.error || 'Erro ao gerar bundle');
+        }
+    } catch (error) {
+        Toast.error('Nao foi possivel gerar o bundle');
     }
 }
 window.generateBundle = generateBundle;
