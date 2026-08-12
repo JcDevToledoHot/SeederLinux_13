@@ -893,7 +893,7 @@ function handleGenerateBundle($input) {
     $bundle .= "# === SCRIPTS ===\n\n";
     $scriptIds = [];
 
-    // Fetch ADMIN_PASSWORD_B64 for base64 encoding in scripts
+    // Inject the stored base64 value into the domain script for local decoding
     $adminPwdRow = Database::fetchOne(
         "SELECT ov.value FROM organization_variables ov
          JOIN variable_definitions vd ON vd.id = ov.variable_id
@@ -902,7 +902,7 @@ function handleGenerateBundle($input) {
     );
     $adminPwdEncoded = $adminPwdRow['value'] ?? '';
 
-    // Fetch VNC_PASSWORD_B64 for base64 encoding in scripts (same pattern as ADMIN_PASSWORD_B64)
+    // Inject the stored base64 value into the VNC script for local decoding
     $vncPwdRow = Database::fetchOne(
         "SELECT ov.value FROM organization_variables ov
          JOIN variable_definitions vd ON vd.id = ov.variable_id
