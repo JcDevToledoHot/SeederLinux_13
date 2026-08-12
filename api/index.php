@@ -611,6 +611,7 @@ function handleDeleteOrganization($id) {
 
 // VARIABLES
 function handleGetVariables($orgId) {
+<<<<<<< HEAD
     $user = getCurrentUser();
     // operador_om só pode acessar sua própria OM
     if (!$orgId) {
@@ -619,6 +620,13 @@ function handleGetVariables($orgId) {
     if ($user && $user['role'] === 'operador_om' && $orgId != $user['organization_id']) {
         jsonError('Acesso negado a esta organizacao', 403);
     }
+=======
+    if (($_SESSION['role'] ?? '') === 'operador_om') {
+        $orgId = getUserOrgId();
+    } elseif (!$orgId) {
+        $orgId = getUserOrgId();
+    }
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
     if (!$orgId) jsonError('Organization ID required', 400);
 
     try {
@@ -649,6 +657,7 @@ function handleUpdateVariables($input) {
     $variables = $input['variables'] ?? [];
 
     if (!$orgId) jsonError('Organization ID required');
+<<<<<<< HEAD
     
     // Verificar escopo: operador_om não pode acessar dados de outra OM
     $user = getCurrentUser();
@@ -656,6 +665,18 @@ function handleUpdateVariables($input) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Acesso negado a esta organizacao']);
         return;
+=======
+    if (($_SESSION['role'] ?? '') === 'operador_om' && $orgId !== (int)getUserOrgId()) {
+        jsonError('Acesso negado a esta organização', 403);
+    }
+
+    foreach ($variables as $varId => $value) {
+        Database::execute(
+            "UPDATE organization_variables SET value = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE organization_id = ? AND variable_id = ?",
+            [$value, $orgId, $varId]
+        );
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
     }
 
     try {
@@ -922,11 +943,12 @@ function handleGenerateBundle($input) {
             [$orgId]
         );
     } else {
+        $selectedScripts = array_map('intval', $selectedScripts);
         $placeholders = implode(',', array_fill(0, count($selectedScripts), '?'));
-        $params = $selectedScripts;
+        $params = array_merge($selectedScripts, [$orgId]);
         $scripts = Database::fetchAll(
             "SELECT id, name, filename, content, is_core FROM scripts
-             WHERE is_active = TRUE AND (is_core = TRUE OR id IN ($placeholders))
+             WHERE is_active = TRUE AND (is_core = TRUE OR (id IN ($placeholders) AND organization_id = ?))
              ORDER BY execution_order ASC, name",
             $params
         );
@@ -1219,6 +1241,7 @@ function handleGetStations($orgId) {
         $params[] = $orgId;
     }
 
+<<<<<<< HEAD
     try {
         // Paginação
         $page = max(1, (int)($_GET['page'] ?? 1));
@@ -1276,6 +1299,35 @@ function handleGetStations($orgId) {
         ]);
         return;
     }
+=======
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+    $totalCount = (int)Database::fetchOne("SELECT COUNT(*) AS total FROM stations s WHERE {$where}", $params)['total'];
+    $stations = Database::fetchAll(
+        "SELECT s.id, s.hostname, s.ip_address, s.mac_address, s.os_name, s.os_version,
+                s.last_checkin, s.configuration_serial, s.organization_id, o.acronym as org_acronym,
+                o.serial_config,
+                CASE
+                    WHEN s.last_checkin >= ? THEN 'online'
+                    WHEN s.last_checkin < ? AND s.last_checkin IS NOT NULL THEN 'delayed'
+                    WHEN s.last_checkin IS NULL THEN 'never'
+                    ELSE 'unknown'
+                END as connection_status,
+                CASE
+                    WHEN s.configuration_serial >= o.serial_config THEN 'updated'
+                    ELSE 'outdated'
+                END as config_status
+         FROM stations s
+         JOIN organizations o ON o.id = s.organization_id
+         WHERE {$where}
+         ORDER BY s.last_checkin DESC NULLS LAST
+         LIMIT ? OFFSET ?",
+        array_merge([date('Y-m-d H:i:s', strtotime('-2 hours')), date('Y-m-d H:i:s', strtotime('-2 hours'))], $params, [$limit, $offset])
+    );
+
+    jsonSuccess(['data' => $stations, 'pagination' => ['page' => $page, 'limit' => $limit, 'total' => $totalCount]]);
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
 }
 
 function handleStationCheckin($input) {
@@ -1383,11 +1435,22 @@ function handleStationCheckin($input) {
 function handleGetAuditEvents() {
     if (!isAdminGap() && !isAuditor()) jsonError('Sem permissao', 403);
 
+<<<<<<< HEAD
     try {
         // Paginação
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
         $offset = ($page - 1) * $limit;
+=======
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+    $orgId = isset($_GET['org_id']) ? (int)$_GET['org_id'] : null;
+    $startDate = sanitizeInput($_GET['start_date'] ?? '');
+    $endDate = sanitizeInput($_GET['end_date'] ?? '');
+    $entityType = sanitizeInput($_GET['entity_type'] ?? '');
+    $action = sanitizeInput($_GET['action'] ?? '');
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
 
         // Filtros opcionais
         $orgId = isset($_GET['org_id']) ? (int)$_GET['org_id'] : null;
@@ -1457,6 +1520,43 @@ function handleGetAuditEvents() {
         ]);
         return;
     }
+<<<<<<< HEAD
+=======
+    if ($startDate) {
+        $where .= " AND a.created_at >= ?";
+        $params[] = $startDate . ' 00:00:00';
+    }
+    if ($endDate) {
+        $where .= " AND a.created_at <= ?";
+        $params[] = $endDate . ' 23:59:59';
+    }
+    if ($entityType) {
+        $where .= " AND a.entity = ?";
+        $params[] = $entityType;
+    }
+    if ($action) {
+        $where .= " AND a.action = ?";
+        $params[] = $action;
+    }
+
+    $totalCount = (int)Database::fetchOne("SELECT COUNT(*) AS total FROM audit_events a WHERE {$where}", $params)['total'];
+    $params[] = $limit;
+    $params[] = $offset;
+
+    $events = Database::fetchAll(
+        "SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.ip_address, a.created_at,
+                u.username, u.full_name, o.acronym as org_acronym
+         FROM audit_events a
+         LEFT JOIN users u ON u.id = a.user_id
+         LEFT JOIN organizations o ON o.id = a.organization_id
+         WHERE {$where}
+         ORDER BY a.created_at DESC
+         LIMIT ? OFFSET ?",
+        $params
+    );
+
+    jsonSuccess(['data' => $events, 'pagination' => ['page' => $page, 'limit' => $limit, 'total' => $totalCount]]);
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
 }
 
 // UPLOADS
@@ -1807,6 +1907,7 @@ function handleListBundles($orgId) {
     }
     if (!$orgId) jsonError('org_id required');
 
+<<<<<<< HEAD
     try {
         // Paginação
         $page = max(1, (int)($_GET['page'] ?? 1));
@@ -1847,6 +1948,24 @@ function handleListBundles($orgId) {
         ]);
         return;
     }
+=======
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $limit = min(100, max(10, (int)($_GET['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+    $totalCount = (int)Database::fetchOne(
+        "SELECT COUNT(*) AS total FROM deploy_bundles WHERE organization_id = ?",
+        [$orgId]
+    )['total'];
+    $bundles = Database::fetchAll(
+        "SELECT id, filename, description, scripts_count, generated_at, is_active, octet_length(content) as content_size
+         FROM deploy_bundles
+         WHERE organization_id = ?
+         ORDER BY generated_at DESC
+         LIMIT ? OFFSET ?",
+        [$orgId, $limit, $offset]
+    );
+    jsonSuccess(['data' => $bundles, 'pagination' => ['page' => $page, 'limit' => $limit, 'total' => $totalCount]]);
+>>>>>>> 7dae07fba144bffe7b4558df14dd857a354cde87
 }
 
 function handleToggleBundleActive($input) {
