@@ -863,7 +863,13 @@ function renderRepositoryCards(vars) {
         if (urlVar) {
             const urlStyle = enabled ? '' : 'style="display:none;"';
             html += `<div class="repo-url-wrap" ${urlStyle}>
-                <input type="text" class="var-input" data-var="${urlVar.name}" value="${Utils.escapeHtml(urlVar.current_value || '')}" placeholder="${d.placeholder}">
+                <input type="text" 
+                if (v.name === 'SSH_GROUPS') {
+                    helpHtml = '<span class="text-xs text-slate-400 mt-1 block">Lista de grupos separados por vírgula. Ex: linux-admins,_DASTI</span>';
+                } else {
+                    helpHtml = '';
+                }
+class="var-input" data-var="${urlVar.name}" value="${Utils.escapeHtml(urlVar.current_value || '')}" placeholder="${d.placeholder}">
                 <p class="text-slate-500 text-xs mt-1 font-mono">${urlVar.name}</p>
             </div>`;
         }
@@ -1092,8 +1098,17 @@ function renderTypedInput(v) {
     if (v.type === 'array') {
         let ph = 'Separe multiplos valores por virgula';
         if (v.name === 'JAVA_EXCEPTIONS') ph = 'Uma URL por linha';
-        if (v.name === 'SSH_GROUPS') ph = 'Um grupo por linha (ex: linux-admins, Domain Admins)';
+        if (v.name === 'SSH_GROUPS') ph = 'Grupos separados por vírgula. Ex: linux-admins,ASTIC';
         return `<textarea data-var-id="${varId}" rows="2" class="var-textarea" placeholder="${ph}">${Utils.escapeHtml(val)}</textarea>`;
+        if (v.type === 'array') {
+        let ph = 'Separe multiplos valores por virgula';
+        let note = '';
+        if (v.name === 'JAVA_EXCEPTIONS') ph = 'Uma URL por linha';
+        if (v.name === 'SSH_GROUPS') {
+            ph = 'Grupos separados por vírgula. Ex: linux-admins,_DASTI';
+            note = '<span class="text-xs text-slate-400 mt-1 block">Grupos separados por vírgula. Ex: linux-admins,_DASTI</span>';
+        }
+        return `<textarea data-var-id="${varId}" rows="2" class="var-textarea" placeholder="${ph}">${Utils.escapeHtml(val)}</textarea>${note}`;
     }
     if (v.type === 'url' || v.name.includes('URL')) {
         let ph = '';
