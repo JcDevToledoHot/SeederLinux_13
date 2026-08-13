@@ -131,7 +131,7 @@ function generateDefaultVariables($orgId, $name, $acronym, $domain, $dcIp = null
         'OM_ACRONYM' => strtoupper($acronym),
         'OM_NAME' => $name,
         'DISPLAY_NAME' => $name,
-        'BASE_URL' => $domain ? "https://softwarelivre.{$domain}" : '',
+        'BASE_URL' => $domain ? "https://seederlinux.{$domain}" : '',
         'WALLPAPER_URL' => '/assets/wallpapers/default.jpg',
         'LOGO_URL' => '/assets/logos/default.png',
         'HOMEPAGE' => $domain ? "www.{$domain}" : '',
@@ -140,7 +140,8 @@ function generateDefaultVariables($orgId, $name, $acronym, $domain, $dcIp = null
         'PROXY_URL' => $domain ? "http://proxy.{$domain}:8080" : '',
         'NO_PROXY' => $domain ? "localhost,127.0.0.1,{$domain}" : '',
         'OU_PADRAO' => $domain ? 'OU=Estacoes,' . implode(',', array_map(fn($p) => "DC=$p", explode('.', $domain))) : '',
-        'REPOSITORY_URL' => $domain ? "https://softwarelivre.{$domain}" : '',
+        'REPOSITORY_URL' => $domain ? "https://seederlinux.{$domain}" : '',
+        'SEEDER_SERVER' => $domain ? "https://seederlinux.{$domain}" : '',
     ];
 
     if ($dcIp) $defaultValues['DC_IP'] = $dcIp;

@@ -48,6 +48,34 @@ try {
             break;
 
         // Organizations
+
+/**
+ * Gera URL baseada na sigla da organização
+ */
+function get_server_url_by_org($acronym) {
+    $sigla = strtolower(trim($acronym));
+    return "https://seederlinux.$sigla.intraer";
+}
+
+/**
+ * Sanitiza URLs do servidor para uma organização
+ */
+function sanitize_org_urls($org) {
+    $base_url = get_server_url_by_org($org['acronym']);
+    
+    // Força BASE_URL, SEEDER_SERVER e REPOSITORY_URL com base na sigla
+    if (empty($org['BASE_URL']) || strpos($org['BASE_URL'], 'softwarelivre') !== false || strpos($org['BASE_URL'], 'om.local') !== false || strpos($org['BASE_URL'], ' ') !== false) {
+        $org['BASE_URL'] = $base_url;
+    }
+    if (empty($org['SEEDER_SERVER']) || strpos($org['SEEDER_SERVER'], 'om.local') !== false) {
+        $org['SEEDER_SERVER'] = $base_url;
+    }
+    if (empty($org['REPOSITORY_URL']) || strpos($org['REPOSITORY_URL'], 'softwarelivre') !== false) {
+        $org['REPOSITORY_URL'] = $base_url;
+    }
+    
+    return $org;
+}
         case 'organizations':
             requireAuth();
             if ($method === 'GET') handleGetOrganizations();
@@ -905,6 +933,9 @@ function handleGenerateBundle($input) {
         $org = Database::fetchOne("SELECT id, acronym, domain, serial_config FROM organizations WHERE id = ?", [$orgId]);
         if (!$org) jsonError('Organizacao nao encontrada', 404);
 
+        // Sanitizar URLs dinâmicas baseadas na sigla da OM
+        $org = sanitize_org_urls($org);
+
     $vars = Database::fetchAll(
         "SELECT vd.name, vd.type, COALESCE(ov.value, vd.default_value, '') AS value
          FROM variable_definitions vd
@@ -933,9 +964,8 @@ function handleGenerateBundle($input) {
         );
     }
 
-    // Filtrar scripts de sessao (14a/14b/14c) - manter todos os 3 scripts de sessao
-    // Cada script de sessao verifica internamente o DISPLAY_MANAGER e decide se executa ou nao.
-    // (Removido o filtro que mantinha apenas 1 script de sessao, causando bundles com 20 scripts em vez de 22.)
+    // Todos os 22 scripts Core são incluídos no bundle.
+    // Cada script de sessão (lightdm, gdm3, sddm) decide internamente se executa ou não.
 
     $bundle = "#!/bin/bash\n";
     $bundle .= "# ============================================\n";
@@ -1475,7 +1505,7 @@ function handleUploadWallpaper() {
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $filename = 'wallpaper_org' . $orgId . '_' . time() . '.' . $ext;
+    $filename = uniqid('', true) . '.' . $ext;
     $uploadDir = __DIR__ . '/../assets/wallpapers/';
 
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
@@ -1536,7 +1566,7 @@ function handleUploadLogo() {
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $filename = 'logo_org' . $orgId . '_' . time() . '.' . $ext;
+    $filename = uniqid('', true) . '.' . $ext;
     $uploadDir = __DIR__ . '/../assets/logos/';
 
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
@@ -1741,7 +1771,7 @@ function handleUploadAsset() {
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    $filename = $cfg['prefix'] . '_org' . $orgId . '_' . time() . '.' . $ext;
+    $filename = uniqid('', true) . '.' . $ext;
     $uploadDir = __DIR__ . '/../assets/' . $cfg['dir'] . '/';
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
