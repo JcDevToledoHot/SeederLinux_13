@@ -111,6 +111,15 @@ BASE_PACKAGES=(
 apt-get install -y "${BASE_PACKAGES[@]}"
 
 # ============================================================
+# Garantir repositorio universe (necessario antes de auth e ocsinventory)
+# ============================================================
+echo ">>> Garantindo repositorio universe..."
+if command -v add-apt-repository &>/dev/null; then
+    add-apt-repository -y universe 2>/dev/null || true
+fi
+apt-get update -qq
+
+# ============================================================
 # Pacotes de autenticacao (AD/Kerberos/SSSD)
 # ============================================================
 echo ">>> Instalando pacotes de autenticacao..."
@@ -134,7 +143,11 @@ AUTH_PACKAGES=(
     network-manager-gnome
 )
 
-apt-get install -y "${AUTH_PACKAGES[@]}"
+for pkg in "${AUTH_PACKAGES[@]}"; do
+    if ! apt-get install -y "$pkg" 2>/dev/null; then
+        echo ">>> AVISO: Falha ao instalar pacote: $pkg"
+    fi
+done
 
 # ============================================================
 # Pacotes do ambiente grafico (OPCIONAL)
@@ -172,15 +185,6 @@ else
     echo ">>> INSTALL_DESKTOP != true. Nao instalando DE."
     echo ">>> Utilizando ambiente grafico ja presente: $DETECTED_DE"
 fi
-
-# ============================================================
-# Garantir repositorio universe (necessario para ocsinventory-agent no Mint/Ubuntu)
-# ============================================================
-echo ">>> Garantindo repositorio universe..."
-if command -v add-apt-repository &>/dev/null; then
-    add-apt-repository -y universe 2>/dev/null || true
-fi
-apt-get update -qq
 
 # ============================================================
 # Pacotes complementares

@@ -50,6 +50,10 @@ DNS_INTERNET="{{DNS_INTERNET}}"
 NTP_SERVER="{{NTP_SERVER}}"
 OM_ACRONYM="{{OM_ACRONYM}}"
 
+# Remover protocolo indevido do NTP_SERVER
+NTP_SERVER="${NTP_SERVER#http://}"
+NTP_SERVER="${NTP_SERVER#https://}"
+
 echo ">>> Dominio: $DOMINIO"
 echo ">>> DNS primario: $DNS_PRIMARIO"
 echo ">>> DNS secundario: ${DNS_SECUNDARIO}"
@@ -557,6 +561,15 @@ BASE_PACKAGES=(
 apt-get install -y "${BASE_PACKAGES[@]}"
 
 # ============================================================
+# Garantir repositorio universe (necessario antes de auth e ocsinventory)
+# ============================================================
+echo ">>> Garantindo repositorio universe..."
+if command -v add-apt-repository &>/dev/null; then
+    add-apt-repository -y universe 2>/dev/null || true
+fi
+apt-get update -qq
+
+# ============================================================
 # Pacotes de autenticacao (AD/Kerberos/SSSD)
 # ============================================================
 echo ">>> Instalando pacotes de autenticacao..."
@@ -580,7 +593,11 @@ AUTH_PACKAGES=(
     network-manager-gnome
 )
 
-apt-get install -y "${AUTH_PACKAGES[@]}"
+for pkg in "${AUTH_PACKAGES[@]}"; do
+    if ! apt-get install -y "$pkg" 2>/dev/null; then
+        echo ">>> AVISO: Falha ao instalar pacote: $pkg"
+    fi
+done
 
 # ============================================================
 # Pacotes do ambiente grafico (OPCIONAL)
@@ -618,15 +635,6 @@ else
     echo ">>> INSTALL_DESKTOP != true. Nao instalando DE."
     echo ">>> Utilizando ambiente grafico ja presente: $DETECTED_DE"
 fi
-
-# ============================================================
-# Garantir repositorio universe (necessario para ocsinventory-agent no Mint/Ubuntu)
-# ============================================================
-echo ">>> Garantindo repositorio universe..."
-if command -v add-apt-repository &>/dev/null; then
-    add-apt-repository -y universe 2>/dev/null || true
-fi
-apt-get update -qq
 
 # ============================================================
 # Pacotes complementares
@@ -3067,7 +3075,7 @@ mkdir -p /usr/share/pixmaps
 # ============================================================
 echo ">>> Baixando wallpaper..."
 if [ -n "$WALLPAPER_URL" ] && [ "$WALLPAPER_URL" != "" ]; then
-    if wget -q -O /usr/share/backgrounds/seederlinux/wallpaper.jpg "$WALLPAPER_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/backgrounds/seederlinux/wallpaper.jpg "$WALLPAPER_URL"; then
         echo ">>> Wallpaper instalado"
     else
         echo ">>> AVISO: Falha ao baixar wallpaper de: $WALLPAPER_URL"
@@ -3081,7 +3089,7 @@ fi
 # ============================================================
 echo ">>> Baixando wallpaper de login..."
 if [ -n "$WALLPAPER_LOGIN_URL" ] && [ "$WALLPAPER_LOGIN_URL" != "" ]; then
-    if wget -q -O /usr/share/backgrounds/seederlinux/wallpaper-login.jpg "$WALLPAPER_LOGIN_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/backgrounds/seederlinux/wallpaper-login.jpg "$WALLPAPER_LOGIN_URL"; then
         echo ">>> Wallpaper de login instalado"
     else
         echo ">>> AVISO: Falha ao baixar wallpaper de login"
@@ -3093,7 +3101,7 @@ fi
 # ============================================================
 echo ">>> Baixando logo..."
 if [ -n "$LOGO_URL" ] && [ "$LOGO_URL" != "" ]; then
-    if wget -q -O /usr/share/pixmaps/seederlinux-logo.png "$LOGO_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/pixmaps/seederlinux-logo.png "$LOGO_URL"; then
         echo ">>> Logo instalado"
     else
         echo ">>> AVISO: Falha ao baixar logo"
@@ -3106,7 +3114,7 @@ fi
 echo ">>> Baixando greeter..."
 if [ -n "$GREETER_URL" ] && [ "$GREETER_URL" != "" ]; then
     GREETER_TARBALL="/tmp/seederlinux-greeter.tar.gz"
-    if wget -q -O "$GREETER_TARBALL" "$GREETER_URL"; then
+    if wget -q --no-check-certificate -O "$GREETER_TARBALL" "$GREETER_URL"; then
         mkdir -p /tmp/seederlinux-greeter
         tar xzf "$GREETER_TARBALL" -C /tmp/seederlinux-greeter
         # Copiar para o local apropriado conforme o DM
@@ -3813,8 +3821,8 @@ cat > /usr/local/bin/trocar-senha << 'EOFSCRIPT'
 # Interface gráfica com Zenity para alteração de senha no domínio
 # ============================================================================
 
-DOMINIO="__DOMINIO__"
-OM_ACRONYM="__OM_ACRONYM__"
+DOMINIO="{{DOMINIO}}"
+OM_ACRONYM="{{OM_ACRONYM}}"
 
 trocar_senha() {
     IFS='|' read -r OldPasswd NewPasswd1 NewPasswd2 <<< \
@@ -3905,10 +3913,6 @@ trocar_senha
 
 exit $?
 EOFSCRIPT
-
-# Substituir placeholders no script instalado
-sed -i "s/__DOMINIO__/$DOMINIO/g" /usr/local/bin/trocar-senha
-sed -i "s/__OM_ACRONYM__/$OM_ACRONYM/g" /usr/local/bin/trocar-senha
 
 chmod 755 /usr/local/bin/trocar-senha
 echo ">>> Script de troca de senha instalado em /usr/local/bin/trocar-senha"
@@ -4738,7 +4742,7 @@ echo ">>> Organizacao: $OM_ACRONYM"
 
 # Baixar o agente
 mkdir -p /usr/local/bin
-if wget -q -O /usr/local/bin/seeder-agent "${SEEDER_SERVER}/downloads/agent.py"; then
+if wget -q --no-check-certificate -O /usr/local/bin/seeder-agent "${SEEDER_SERVER}/downloads/agent.py"; then
     # Verificar que o arquivo nao esta vazio
     if [ ! -s /usr/local/bin/seeder-agent ]; then
         echo ">>> ERRO: Agente baixado mas arquivo esta vazio. Verifique $SEEDER_SERVER"

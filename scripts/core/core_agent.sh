@@ -30,7 +30,7 @@ echo ">>> Organizacao: $OM_ACRONYM"
 
 # Baixar o agente
 mkdir -p /usr/local/bin
-if wget -q -O /usr/local/bin/seeder-agent "${SEEDER_SERVER}/downloads/agent.py"; then
+if wget -q --no-check-certificate -O /usr/local/bin/seeder-agent "${SEEDER_SERVER}/downloads/agent.py"; then
     # Verificar que o arquivo nao esta vazio
     if [ ! -s /usr/local/bin/seeder-agent ]; then
         echo ">>> ERRO: Agente baixado mas arquivo esta vazio. Verifique $SEEDER_SERVER"

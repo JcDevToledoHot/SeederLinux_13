@@ -27,6 +27,10 @@ DNS_INTERNET="{{DNS_INTERNET}}"
 NTP_SERVER="{{NTP_SERVER}}"
 OM_ACRONYM="{{OM_ACRONYM}}"
 
+# Remover protocolo indevido do NTP_SERVER
+NTP_SERVER="${NTP_SERVER#http://}"
+NTP_SERVER="${NTP_SERVER#https://}"
+
 echo ">>> Dominio: $DOMINIO"
 echo ">>> DNS primario: $DNS_PRIMARIO"
 echo ">>> DNS secundario: ${DNS_SECUNDARIO}"

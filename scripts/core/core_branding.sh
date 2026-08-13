@@ -93,7 +93,7 @@ mkdir -p /usr/share/pixmaps
 # ============================================================
 echo ">>> Baixando wallpaper..."
 if [ -n "$WALLPAPER_URL" ] && [ "$WALLPAPER_URL" != "" ]; then
-    if wget -q -O /usr/share/backgrounds/seederlinux/wallpaper.jpg "$WALLPAPER_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/backgrounds/seederlinux/wallpaper.jpg "$WALLPAPER_URL"; then
         echo ">>> Wallpaper instalado"
     else
         echo ">>> AVISO: Falha ao baixar wallpaper de: $WALLPAPER_URL"
@@ -107,7 +107,7 @@ fi
 # ============================================================
 echo ">>> Baixando wallpaper de login..."
 if [ -n "$WALLPAPER_LOGIN_URL" ] && [ "$WALLPAPER_LOGIN_URL" != "" ]; then
-    if wget -q -O /usr/share/backgrounds/seederlinux/wallpaper-login.jpg "$WALLPAPER_LOGIN_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/backgrounds/seederlinux/wallpaper-login.jpg "$WALLPAPER_LOGIN_URL"; then
         echo ">>> Wallpaper de login instalado"
     else
         echo ">>> AVISO: Falha ao baixar wallpaper de login"
@@ -119,7 +119,7 @@ fi
 # ============================================================
 echo ">>> Baixando logo..."
 if [ -n "$LOGO_URL" ] && [ "$LOGO_URL" != "" ]; then
-    if wget -q -O /usr/share/pixmaps/seederlinux-logo.png "$LOGO_URL"; then
+    if wget -q --no-check-certificate -O /usr/share/pixmaps/seederlinux-logo.png "$LOGO_URL"; then
         echo ">>> Logo instalado"
     else
         echo ">>> AVISO: Falha ao baixar logo"
@@ -132,7 +132,7 @@ fi
 echo ">>> Baixando greeter..."
 if [ -n "$GREETER_URL" ] && [ "$GREETER_URL" != "" ]; then
     GREETER_TARBALL="/tmp/seederlinux-greeter.tar.gz"
-    if wget -q -O "$GREETER_TARBALL" "$GREETER_URL"; then
+    if wget -q --no-check-certificate -O "$GREETER_TARBALL" "$GREETER_URL"; then
         mkdir -p /tmp/seederlinux-greeter
         tar xzf "$GREETER_TARBALL" -C /tmp/seederlinux-greeter
         # Copiar para o local apropriado conforme o DM

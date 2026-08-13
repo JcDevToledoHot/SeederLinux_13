@@ -37,8 +37,8 @@ cat > /usr/local/bin/trocar-senha << 'EOFSCRIPT'
 # Interface gráfica com Zenity para alteração de senha no domínio
 # ============================================================================
 
-DOMINIO="__DOMINIO__"
-OM_ACRONYM="__OM_ACRONYM__"
+DOMINIO="{{DOMINIO}}"
+OM_ACRONYM="{{OM_ACRONYM}}"
 
 trocar_senha() {
     IFS='|' read -r OldPasswd NewPasswd1 NewPasswd2 <<< \
@@ -129,10 +129,6 @@ trocar_senha
 
 exit $?
 EOFSCRIPT
-
-# Substituir placeholders no script instalado
-sed -i "s/__DOMINIO__/$DOMINIO/g" /usr/local/bin/trocar-senha
-sed -i "s/__OM_ACRONYM__/$OM_ACRONYM/g" /usr/local/bin/trocar-senha
 
 chmod 755 /usr/local/bin/trocar-senha
 echo ">>> Script de troca de senha instalado em /usr/local/bin/trocar-senha"

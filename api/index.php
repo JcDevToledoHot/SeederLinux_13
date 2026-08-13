@@ -933,25 +933,9 @@ function handleGenerateBundle($input) {
         );
     }
 
-    // Filtrar scripts de sessao (14a/14b/14c) - manter apenas 1 conforme DISPLAY_MANAGER
-    $orgVars = [];
-    foreach ($vars as $v) {
-        $orgVars[$v['name']] = $v['value'];
-    }
-    $displayManager = $orgVars['DISPLAY_MANAGER'] ?? '';
-    $sessionScriptMap = [
-        'lightdm' => 'core_session_lightdm.sh',
-        'gdm3'    => 'core_session_gdm3.sh',
-        'sddm'    => 'core_session_sddm.sh',
-    ];
-    $keepScript = $sessionScriptMap[$displayManager] ?? 'core_session_lightdm.sh';
-
-    $scripts = array_values(array_filter($scripts, function($s) use ($keepScript) {
-        if (strpos($s['filename'] ?? '', 'core_session_') === 0) {
-            return $s['filename'] === $keepScript;
-        }
-        return true;
-    }));
+    // Filtrar scripts de sessao (14a/14b/14c) - manter todos os 3 scripts de sessao
+    // Cada script de sessao verifica internamente o DISPLAY_MANAGER e decide se executa ou nao.
+    // (Removido o filtro que mantinha apenas 1 script de sessao, causando bundles com 20 scripts em vez de 22.)
 
     $bundle = "#!/bin/bash\n";
     $bundle .= "# ============================================\n";
