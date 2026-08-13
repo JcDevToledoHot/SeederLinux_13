@@ -999,7 +999,43 @@ function handleGenerateBundle($input) {
     if ($seederServer) {
         $baseUrl = rtrim($seederServer, '/');
     }
-    $bundle .= "# === VARIAVEIS ===\n";
+    
+    // Sanitizar URLs, NTP e prefixar imagens antes de exportar
+    $sigla = strtolower($org['acronym'] ?? '');
+    $baseUrl = "https://seederlinux.$sigla.intraer";
+
+    foreach ($vars as &$v) {
+        $name = $v['name'] ?? '';
+        $val = $v['value'] ?? '';
+
+        // URLs do servidor
+        if (in_array($name, ['BASE_URL', 'SEEDER_SERVER', 'REPOSITORY_URL'], true)) {
+            if (empty($val) || strpos($val, 'softwarelivre') !== false || strpos($val, 'om.local') !== false || strpos($val, ' ') !== false) {
+                $v['value'] = $baseUrl;
+            }
+        }
+
+        // NTP_SERVER: remover protocolo
+        if ($name === 'NTP_SERVER') {
+            $v['value'] = preg_replace('#^https?://#', '', $val);
+        }
+
+        // Imagens: remover tripla barra e prefixar com SEEDER_SERVER se for relativa
+        if (in_array($name, ['WALLPAPER_URL', 'WALLPAPER_LOGIN_URL', 'LOGO_URL', 'GREETER_URL'], true)) {
+            // Remove http:/// ou https:/// (tripla barra)
+            if (strpos($val, 'http:///') === 0 || strpos($val, 'https:///') === 0) {
+                $val = substr($val, strpos($val, '/', 8)); // remove o prefixo
+            }
+            // Se for relativa (começa com /), transforma em absoluta
+            if ($val !== '' && $val[0] === '/') {
+                $val = rtrim($baseUrl, '/') . $val;
+            }
+            $v['value'] = $val;
+        }
+    }
+    unset($v);
+
+$bundle .= "# === VARIAVEIS ===\n";
     foreach ($vars as $v) {
         if (in_array($v['type'], $skipExportTypes, true)) continue;
         if (in_array($v['name'], $skipExportNames, true)) continue;
