@@ -2,6 +2,27 @@
 require_once __DIR__ . '/../lib/config.php';
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/functions.php';
+function get_server_url_by_org($acronym) {
+    $sigla = strtolower(trim($acronym));
+    return "https://seederlinux.$sigla.intraer";
+}
+
+function sanitize_org_urls($org) {
+    $base_url = get_server_url_by_org($org['acronym']);
+    
+    if (empty($org['BASE_URL']) || strpos($org['BASE_URL'], 'softwarelivre') !== false || strpos($org['BASE_URL'], 'om.local') !== false || strpos($org['BASE_URL'], ' ') !== false) {
+        $org['BASE_URL'] = $base_url;
+    }
+    if (empty($org['SEEDER_SERVER']) || strpos($org['SEEDER_SERVER'], 'om.local') !== false) {
+        $org['SEEDER_SERVER'] = $base_url;
+    }
+    if (empty($org['REPOSITORY_URL']) || strpos($org['REPOSITORY_URL'], 'softwarelivre') !== false) {
+        $org['REPOSITORY_URL'] = $base_url;
+    }
+    
+    return $org;
+}
+
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -52,30 +73,10 @@ try {
 /**
  * Gera URL baseada na sigla da organização
  */
-function get_server_url_by_org($acronym) {
-    $sigla = strtolower(trim($acronym));
-    return "https://seederlinux.$sigla.intraer";
-}
 
 /**
  * Sanitiza URLs do servidor para uma organização
  */
-function sanitize_org_urls($org) {
-    $base_url = get_server_url_by_org($org['acronym']);
-    
-    // Força BASE_URL, SEEDER_SERVER e REPOSITORY_URL com base na sigla
-    if (empty($org['BASE_URL']) || strpos($org['BASE_URL'], 'softwarelivre') !== false || strpos($org['BASE_URL'], 'om.local') !== false || strpos($org['BASE_URL'], ' ') !== false) {
-        $org['BASE_URL'] = $base_url;
-    }
-    if (empty($org['SEEDER_SERVER']) || strpos($org['SEEDER_SERVER'], 'om.local') !== false) {
-        $org['SEEDER_SERVER'] = $base_url;
-    }
-    if (empty($org['REPOSITORY_URL']) || strpos($org['REPOSITORY_URL'], 'softwarelivre') !== false) {
-        $org['REPOSITORY_URL'] = $base_url;
-    }
-    
-    return $org;
-}
         case 'organizations':
             requireAuth();
             if ($method === 'GET') handleGetOrganizations();
