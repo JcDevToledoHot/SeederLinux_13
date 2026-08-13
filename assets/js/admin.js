@@ -1302,7 +1302,7 @@ async function saveVariables() {
 
     // Normalize URL fields: ensure they start with http:// or https://
     // Skip image/asset path variables that use relative paths (e.g. /assets/wallpapers/...)
-    const imagePathVars = ['WALLPAPER_URL', 'WALLPAPER_LOGIN_URL', 'GREETER_URL'];
+    const imagePathVars = ['WALLPAPER_URL', 'WALLPAPER_LOGIN_URL', 'GREETER_URL', 'LOGO_URL'];
     const urlVarNames = allVariables
         .filter(v => (v.type === 'url' || v.name.includes('URL') || v.name.includes('SERVER') || v.name === 'HOMEPAGE') && !imagePathVars.includes(v.name))
         .map(v => String(v.id));
@@ -1610,12 +1610,14 @@ async function loadBundles(orgId) {
     const res = await API.get('bundles', { org_id: orgId });
     if (!res.success) { el.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-rose-400">Erro ao carregar</td></tr>'; return; }
 
-    if (!res.data || res.data.length === 0) {
+    const bundleList = Array.isArray(res.data) ? res.data : (res.data && Array.isArray(res.data.bundles) ? res.data.bundles : []);
+
+    if (!bundleList || bundleList.length === 0) {
         el.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Nenhum bundle gerado ainda</td></tr>';
         return;
     }
 
-    el.innerHTML = res.data.map(b => {
+    el.innerHTML = bundleList.map(b => {
         const date = new Date(b.generated_at);
         const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
             ' ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
