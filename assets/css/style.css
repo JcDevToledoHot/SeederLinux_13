@@ -374,6 +374,27 @@ td {
     margin-top: 1rem;
 }
 
+.var-section-header {
+    grid-column: 1 / -1;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+.var-section-header:first-child {
+    margin-top: 0;
+}
+.var-section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #93c5fd;
+    margin: 0;
+    padding-left: 0.5rem;
+    border-left: 3px solid var(--primary);
+}
+
 .var-row {
     margin-bottom: 1rem;
 }

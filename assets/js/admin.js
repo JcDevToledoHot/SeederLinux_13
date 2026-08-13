@@ -38,13 +38,13 @@ const superCategoryOrder = [
 ];
 
 const superCategoryLabels = {
-    'identidade': 'Identidade e Personalizacao',
+    'identidade': 'Identidade e Personalização',
     'rede_proxy': 'Rede e Proxy',
-    'dominio_ad': 'Dominio e Autenticacao AD',
-    'repositorios': 'Repositorios e Distribuicoes',
-    'seguranca_agente': 'Seguranca, Certificados e Agente',
-    'aplicacoes_nav': 'Aplicacoes e Navegadores',
-    'estacoes_perifericos': 'Estacoes, Perifericos e Monitoramento'
+    'dominio_ad': 'Domínio e Autenticação AD',
+    'repositorios': 'Repositórios e Distribuições',
+    'seguranca_agente': 'Segurança, Certificados e Agente',
+    'aplicacoes_nav': 'Aplicações e Navegadores',
+    'estacoes_perifericos': 'Estações, Periféricos e Monitoramento'
 };
 
 // Map original category -> super category
@@ -71,50 +71,61 @@ const categoryToSuper = {
     'custom': 'estacoes_perifericos'
 };
 
-// Within each super category, define sub-section headers and which original categories belong
+// Within each super category, define sub-section headers by variable name.
+// Variables not listed in any section are collected into a "Outras Variáveis" block.
 const superCategorySections = {
     'identidade': [
-        { title: 'Identidade da OM', categories: ['branding'] },
-        { title: 'Identidade Visual & Assets', categories: ['assets'] },
-        { title: 'Ambiente Grafico', categories: ['ambiente'] }
+        { title: 'Identidade da OM', vars: ['DISPLAY_NAME', 'OM_ACRONYM', 'OM_NAME', 'THEME'] },
+        { title: 'Identidade Visual', vars: ['LOGO_URL', 'WALLPAPER_URL', 'WALLPAPER_LOGIN_URL', 'GREETER_URL'] },
+        { title: 'Ambiente Gráfico', vars: ['DISPLAY_MANAGER', 'INSTALL_DESKTOP', 'DESKTOP_ENV'] }
     ],
     'rede_proxy': [
-        { title: 'Configuracoes de Rede', categories: ['rede'] },
-        { title: 'Proxy', categories: ['proxy'] },
-        { title: 'Excecoes e PAC (Navegador)', categories: ['navegador'] }
+        { title: 'Rede', vars: ['BASE_URL', 'SEEDER_SERVER', 'PRINT_SERVER', 'DNS_PRIMARIO', 'DNS_SECUNDARIO', 'DNS_INTERNET', 'NTP_SERVER'] },
+        { title: 'Proxy', vars: ['PROXY_MODE', 'PROXY_HTTP', 'PROXY_PORTA', 'PROXY_URL', 'PAC_URL', 'NO_PROXY'] }
     ],
     'dominio_ad': [
-        { title: 'Dominio e Autenticacao AD', categories: ['dominio'] }
+        { title: 'Domínio', vars: ['DOMINIO', 'DOMINIO_NETBIOS', 'OU_PADRAO'] },
+        { title: 'Controladores', vars: ['DC_IP', 'DC_SECUNDARIO_IP', 'DC_IP_LIST'] },
+        { title: 'Autenticação', vars: ['ADMIN_USERNAME', 'ADMIN_PASSWORD_B64', 'GRUPO_ADMIN', 'AUTH_METHOD'] },
+        { title: 'Cache Offline', vars: ['OFFLINE_AUTH_ENABLED', 'OFFLINE_AUTH_DAYS'] }
     ],
     'repositorios': [
-        { title: 'Repositorios e Distribuicoes', categories: ['repositorios'] }
+        { title: 'Configurações Globais', vars: ['REPOSITORY_MODE', 'REPOSITORY_NODE'] },
+        { title: 'URLs por Distribuição', vars: ['REPOSITORY_DEBIAN_ENABLED', 'REPOSITORY_DEBIAN_URL', 'REPOSITORY_UBUNTU_ENABLED', 'REPOSITORY_UBUNTU_URL', 'REPOSITORY_MINT_ENABLED', 'REPOSITORY_MINT_URL', 'REPOSITORY_ZORIN_ENABLED', 'REPOSITORY_ZORIN_URL'] },
+        { title: 'Fallback Global', vars: ['REPOSITORY_FALLBACK', 'REPOSITORY_URL'] }
     ],
     'seguranca_agente': [
-        { title: 'Certificados', categories: ['certificados', 'avancado'] },
-        { title: 'Agente', categories: ['agente'] },
-        { title: 'Seguranca e Grupos sudo', categories: ['seguranca'] }
+        { title: 'Certificados', vars: ['CERTIFICATE_AUTO_INSTALL', 'CERTIFICATE_BUNDLE'] },
+        { title: 'Agente', vars: ['AGENT_NO_CHECK_CERT', 'INSTALL_AGENT'] },
+        { title: 'Grupos Sudo', vars: ['GRUPO_ADMIN_AD', 'GRUPO_ADMIN_LINUX', 'GRUPO_DASTI'] },
+        { title: 'Exceções', vars: ['JAVA_EXCEPTIONS', 'SSH_GROUPS'] }
     ],
     'aplicacoes_nav': [
-        { title: 'Navegadores', categories: ['navegador'] },
-        { title: 'Aplicacoes e Ferramentas', categories: ['aplicacoes'] }
+        { title: 'Navegadores', vars: ['HOMEPAGE', 'INSTALL_CHROME', 'INSTALL_CHROMIUM', 'INSTALL_FIREFOX52'] },
+        { title: 'Ferramentas', vars: ['INSTALL_ONLYOFFICE', 'REMOVER_LIBREOFFICE'] },
+        { title: 'Java e Utilitários', vars: ['INSTALL_JAVA8', 'INSTALL_PASSWORD_CHANGER'] }
     ],
     'estacoes_perifericos': [
-        { title: 'Impressoras', categories: ['impressoras'] },
-        { title: 'Arquivos Compartilhados', categories: ['arquivos'] },
-        { title: 'Inventario', categories: ['inventario'] },
-        { title: 'Acesso Remoto', categories: ['acesso_remoto'] },
-        { title: 'Monitoramento (Conky)', categories: ['monitoramento'] },
-        { title: 'Outras Variaveis', categories: ['generic', 'custom'] }
+        { title: 'Impressoras', vars: ['DEFAULT_PRINTER', 'PRINTERS'] },
+        { title: 'Arquivos', vars: ['SERVIDOR_ARQUIVOS', 'MOUNT_BASE', 'COMPARTILHAMENTOS'] },
+        { title: 'Inventário', vars: ['INVENTORY_ENABLED', 'GLPI_SERVER', 'OCS_SERVER', 'OCS_TAG'] },
+        { title: 'Acesso Remoto', vars: ['REMOTE_METHOD', 'SSH_PORT', 'VNC_ENABLED', 'VNC_PASSWORD_B64'] },
+        { title: 'Monitoramento', vars: ['CONKY_PROFILE', 'CONKY_CONFIG'] }
     ]
 };
 
 // Variables that should appear in a different super category than their original category maps to.
-// NO_PROXY, PAC_URL, PROXY_MODE belong in Rede e Proxy (not Aplicacoes/Navegadores).
 const variableSuperOverride = {
     'NO_PROXY': 'rede_proxy',
     'PAC_URL': 'rede_proxy',
     'PROXY_MODE': 'rede_proxy',
-    'HOMEPAGE': 'aplicacoes_nav'
+    'NTP_SERVER': 'rede_proxy',
+    'HOMEPAGE': 'aplicacoes_nav',
+    'CERTIFICATE_BUNDLE': 'seguranca_agente',
+    'SSH_GROUPS': 'seguranca_agente',
+    'JAVA_EXCEPTIONS': 'seguranca_agente',
+    'VNC_PASSWORD_B64': 'estacoes_perifericos',
+    'DESKTOP_ENV': 'identidade'
 };
 
 // Campos dependentes: chave = var pai, valor = lista de vars que aparecem apenas se pai=true
@@ -778,21 +789,21 @@ function renderVariables(vars) {
 
     // Get the section definitions for this super category
     const sections = superCategorySections[activeCategory] || [];
-    const sectionCats = new Set();
-    sections.forEach(s => s.categories.forEach(c => sectionCats.add(c)));
+    const sectionVarNames = new Set();
+    sections.forEach(s => s.vars.forEach(n => sectionVarNames.add(n)));
 
     // Variables that don't match any defined section in this super category
-    const leftover = bucket.filter(v => !sectionCats.has(v.category || 'generic'));
+    const leftover = bucket.filter(v => !sectionVarNames.has(v.name));
 
     html += '<div class="var-grid">';
 
     sections.forEach(section => {
-        const sectionVars = bucket.filter(v => section.categories.includes(v.category || 'generic'));
+        const sectionVars = bucket.filter(v => section.vars.includes(v.name));
         if (!sectionVars.length) return;
 
-        html += `<h4 class="col-span-2 mt-4 first:mt-0 text-sm font-semibold text-slate-400 uppercase">${section.title}</h4>`;
+        html += `<div class="var-section-header"><h4 class="var-section-title">${Utils.escapeHtml(section.title)}</h4></div>`;
 
-        if (section.categories.includes('repositorios')) {
+        if (activeCategory === 'repositorios' && section.vars.includes('REPOSITORY_DEBIAN_URL')) {
             html += renderRepositoryCards(sectionVars);
         } else {
             html += renderVarsWithGroups(sectionVars);
@@ -801,7 +812,7 @@ function renderVariables(vars) {
 
     // Render leftover variables (not matching any defined section)
     if (leftover.length) {
-        html += `<h4 class="col-span-2 mt-4 text-sm font-semibold text-slate-400 uppercase">Outras Variaveis</h4>`;
+        html += `<div class="var-section-header"><h4 class="var-section-title">Outras Variáveis</h4></div>`;
         html += renderVarsWithGroups(leftover);
     }
 
@@ -823,45 +834,15 @@ function renderRepositoryCards(vars) {
     const varMap = {};
     vars.forEach(v => { varMap[v.name] = v; });
 
-    const modeVar = varMap['REPOSITORY_MODE'];
-    const fallbackVar = varMap['REPOSITORY_FALLBACK'];
-
-    let html = '<div class="var-grid" style="grid-template-columns: 1fr;">';
-
-    // Bloco superior: Configuracoes globais
-    html += `<div class="col-span-2 mb-2 p-4 bg-slate-800/40 border border-slate-700 rounded-lg">
-        <div class="text-sm font-semibold text-slate-200 mb-3">Configuracoes Globais</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
-
-    if (modeVar) {
-        html += `<div>
-            <label class="block text-xs font-medium text-slate-400 mb-1">Modo de Repositorio${modeVar.is_required ? '<span class="text-red-400">*</span>' : ''}</label>
-            ${renderTypedInput(modeVar)}
-            <p class="text-slate-500 text-xs mt-1 font-mono">REPOSITORY_MODE</p>
-        </div>`;
-    }
-
-    if (fallbackVar) {
-        html += `<div>
-            <label class="block text-xs font-medium text-slate-400 mb-1">Fallback (URL)</label>
-            ${renderTypedInput(fallbackVar)}
-            <p class="text-slate-500 text-xs mt-1 font-mono">REPOSITORY_FALLBACK</p>
-        </div>`;
-    }
-
-    html += `</div></div>`;
-
-    // Bloco inferior: Cards por distribuicao (grid 2x2)
-    html += '<div class="col-span-2 mt-2 grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
+    let html = '<div class="col-span-2 grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
 
     repoDistros.forEach(d => {
+        if (d.enabledVar === null) return;
         const enVar = varMap[d.enabledVar];
         const urlVar = varMap[d.urlVar];
         if (!enVar && !urlVar) return;
 
         const enabled = enVar && (enVar.current_value === 'true' || enVar.current_value === '1' || enVar.current_value === true);
-
-        if (d.enabledVar === null) return;
 
         html += `<div class="repo-card ${d.cls}">
             <div class="repo-card-header">
@@ -871,7 +852,7 @@ function renderRepositoryCards(vars) {
 
         if (enVar) {
             html += `<div class="flex items-center justify-between mb-2">
-                <span class="text-xs text-slate-400">Habilitar repositorio</span>
+                <span class="text-xs text-slate-400">Habilitar repositório</span>
                 <label class="toggle-switch">
                     <input type="checkbox" data-var="${enVar.name}" ${enabled ? 'checked' : ''} onchange="toggleRepoUrl(this, '${d.urlVar}')">
                     <span class="toggle-slider"></span>
@@ -890,7 +871,7 @@ function renderRepositoryCards(vars) {
         html += `</div>`;
     });
 
-    html += '</div></div>';
+    html += '</div>';
     return html;
 }
 
